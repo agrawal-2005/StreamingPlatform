@@ -6,14 +6,14 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 
 const generateAccessAndRefereshTokens = async (userId) => {
   try {
-    const user = await User.findOne({ userId });
-    const acceesToken = user.generateAccessToken();
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
 
     user.refreshToken = refreshToken;
     await user.save({ validateBeforeSave: false });
 
-    return { acceesToken, refreshToken };
+    return { accessToken, refreshToken };
   } catch (error) {
     throw new ApiError(
       500,
@@ -22,7 +22,7 @@ const generateAccessAndRefereshTokens = async (userId) => {
   }
 };
 
-const registerUser = asyncHandler(async (res, req) => {
+const registerUser = asyncHandler(async (req, res) => {
   // res.status(200).json({
   //     message: "ok"
   // })
@@ -122,7 +122,7 @@ const registerUser = asyncHandler(async (res, req) => {
     .json(new ApiResponse(200, createdUser, "User registered successfully"));
 });
 
-const loginUser = asyncHandler(async (res, req) => {
+const loginUser = asyncHandler(async (req, res) => {
   //req body -> data
   //username or email
   //find the user
@@ -136,8 +136,11 @@ const loginUser = asyncHandler(async (res, req) => {
     throw new ApiError(400, "username or email is required!");
   }
 
-  const user = User.findOne({
-    $or: ({ email }, { username }),
+  //   if (!(username || email)) {
+  //     throw new ApiError(400, "username or email is required!");
+  //   }
+  const user = await User.findOne({
+    $or: [{ email }, { username: username?.toLowerCase() }],
   });
 
   if (!user) {
@@ -154,7 +157,7 @@ const loginUser = asyncHandler(async (res, req) => {
     user._id
   );
 
-  const loggedIn = await User.findOne(user._id).select(
+  const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken"
   );
 
@@ -171,7 +174,7 @@ const loginUser = asyncHandler(async (res, req) => {
       new ApiResponse(
         200,
         {
-          user: loggedIn,
+          user: loggedInUser,
           accessToken,
           refreshToken,
         },
@@ -180,12 +183,12 @@ const loginUser = asyncHandler(async (res, req) => {
     );
 });
 
-const logoutUser = asyncHandler(async (req, res) => {
+const logoutUser = asyncHandler(async(req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1 // this removes the field from document
             }
         },
         {
@@ -203,6 +206,6 @@ const logoutUser = asyncHandler(async (req, res) => {
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
     .json(new ApiResponse(200, {}, "User logged Out"))
-});
+})
 
 export { registerUser, loginUser, logoutUser };

@@ -9,6 +9,7 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
+// Register route with file uploads
 router.route("/register").post(
   upload.fields([
     {
@@ -23,9 +24,14 @@ router.route("/register").post(
   registerUser
 );
 
+// Login route
 router.route("/login").post(loginUser);
 
-//secured routes
-router.route("/logout").post(verifyJWT, logoutUser);
+// Secured route
+router.route("/logout").post((req, res, next) => {
+  // console.log("Logout route hit");
+  next();
+}, verifyJWT, logoutUser);
+
 
 export default router;
