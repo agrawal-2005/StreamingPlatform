@@ -260,7 +260,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
 
-  const user = await User.findById(req.user?._id);
+  const user = await User.findById(req.user?._id).select("password");
 
   const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
   if (!isPasswordCorrect) {
@@ -284,18 +284,19 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 const updateAccountDetails = asyncHandler(async (req, res) => {
   const { fullName, email } = req.body;
 
-  if (!fullName || !email) {
+  if (!fullName && !email) {
     throw new ApiError(400, "All fields are required");
   }
 
+  // Create an update object
+  const updateFields = {};
+  if (fullName) updateFields.fullName = fullName;
+  if (email) updateFields.email = email;
+
+  // Find and update the user with the provided fields
   const user = await User.findByIdAndUpdate(
     req.user?._id,
-    {
-      $set: {
-        fullName,
-        email,
-      },
-    },
+    { $set: updateFields },
     { new: true }
   ).select("-password");
 
@@ -395,73 +396,79 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, updateUser, "CoverImage updated successfully"));
 });
 
-const getUserChannelProfile = asyncHandler(async (req, res) => {
-  const { username } = req.params;
+const getUserChannelProfile = asyncHandler(async(req, res) => {
+  const {username} = req.params
+
   if (!username?.trim()) {
-    throw new ApiError(400, "username is missing");
+      throw new ApiError(400, "username is missing")
   }
 
+  // console.log(`Received username: ${username}`);
+  // console.log(`Request user ID: ${req.user?._id}`);
+
   const channel = await User.aggregate([
-    {
-      $match: {
-        username: username?.toLowerCase(),
+      {
+          $match: {
+              username: username?.toLowerCase()
+          }
       },
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "channel",
-        as: "subscribers",
+      {
+          $lookup: {
+              from: "subscriptions",
+              localField: "_id",
+              foreignField: "channel",
+              as: "subscribers"
+          }
       },
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "subscriber",
-        as: "subscribedTo",
+      {
+          $lookup: {
+              from: "subscriptions",
+              localField: "_id",
+              foreignField: "subscriber",
+              as: "subscribedTo"
+          }
       },
-    },
-    {
-      $addFields: {
-        subscribersCount: {
-          $size: "$subscribers",
-        },
-        chanelsSubscribedTocount: {
-          $size: "subscribedTo",
-        },
-        isSubscribed: {
-          if: { $in: [req.user?._id, "$subscribers.subscriber"] },
-          then: true,
-          else: false,
-        },
+      {
+          $addFields: {
+              subscribersCount: {
+                  $size: "$subscribers"
+              },
+              channelsSubscribedToCount: {
+                  $size: "$subscribedTo"
+              },
+              isSubscribed: {
+                  $cond: {
+                      if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                      then: true,
+                      else: false
+                  }
+              }
+          }
       },
-    },
-    {
-      $project: {
-        fullName: 1,
-        username: 1,
-        subscribersCount: 1,
-        chanelsSubscribedTocount: 1,
-        isSecureContext: 1,
-        avatar: 1,
-        coverImage: 1,
-        email: 1,
-      },
-    },
-  ]);
+      {
+          $project: {
+              fullName: 1,
+              username: 1,
+              subscribersCount: 1,
+              channelsSubscribedToCount: 1,
+              isSubscribed: 1,
+              avatar: 1,
+              coverImage: 1,
+              email: 1
+          }
+      }
+  ])
 
   if (!channel?.length) {
-    throw new ApiError(404, "channel does not exists");
+      throw new ApiError(404, "channel does not exists")
   }
 
   return res
-    .status(200)
-    .json(
+  .status(200)
+  .json(
       new ApiResponse(200, channel[0], "User channel fetched successfully")
-    );
-});
+  )
+})
 
 const getWatchHistory = asyncHandler(async (req, res) => {
   const user = await User.aggregate([
